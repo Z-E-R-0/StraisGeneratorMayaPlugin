@@ -1,0 +1,135 @@
+import maya.cmds as cmds
+import math
+
+# Variables to hold group names
+STAIRS_GROUP = "Modular_Stairs"
+RAILINGS_GROUP = "Railings"
+
+# Function to create or update modular stairs
+def create_modular_stairs(step_count=10, step_height=0.3, step_width=2, step_depth=0.5, step_thickness=0.05, include_railings=True, curve_radius=5, is_curved=False, stair_direction="Upward"):
+    """
+    Creates or updates modular stairs in Maya with advanced features.
+    """
+    global STAIRS_GROUP, RAILINGS_GROUP
+
+    # Delete existing stairs group
+    if cmds.objExists(STAIRS_GROUP):
+        cmds.delete(STAIRS_GROUP)
+
+    # Create a new stairs group
+    STAIRS_GROUP = cmds.group(empty=True, name="Modular_Stairs")
+
+    angle_step = 360.0 / step_count if is_curved else 0
+    direction_multiplier = 1 if stair_direction == "Upward" else -1 if stair_direction == "Downward" else 0
+
+    # Create steps
+    for i in range(step_count):
+        step = cmds.polyCube(width=step_width, height=step_thickness, depth=step_depth, name=f"Step_{i+1}")[0]
+
+        if is_curved:
+            # Calculate position and rotation for curved stairs
+            angle = math.radians(angle_step * i)
+            x = math.cos(angle) * curve_radius
+            z = math.sin(angle) * curve_radius
+            y = step_height * i
+            cmds.move(x, y, z, step)
+            cmds.rotate(0, -math.degrees(angle), 0, step, absolute=True)
+        else:
+            # Straight stairs: Upward, Downward, or Flat
+            step_y = step_height * i * direction_multiplier
+            step_z = step_depth * i
+            cmds.move(0, step_y, step_z, step)
+
+        cmds.parent(step, STAIRS_GROUP)
+
+    # Create railings if enabled
+    if include_railings:
+        if cmds.objExists(RAILINGS_GROUP):
+            cmds.delete(RAILINGS_GROUP)
+
+        RAILINGS_GROUP = cmds.group(empty=True, name="Railings")
+        railing_height = step_height * step_count + step_thickness
+
+        if not is_curved:
+            # Straight railings
+            left_railing = cmds.polyCube(width=0.1, height=railing_height, depth=step_depth * step_count, name="Left_Railing")[0]
+            cmds.move(-(step_width / 2 + 0.05), railing_height / 2 - step_thickness / 2, step_depth * step_count / 2, left_railing)
+            cmds.parent(left_railing, RAILINGS_GROUP)
+
+            right_railing = cmds.polyCube(width=0.1, height=railing_height, depth=step_depth * step_count, name="Right_Railing")[0]
+            cmds.move(step_width / 2 + 0.05, railing_height / 2 - step_thickness / 2, step_depth * step_count / 2, right_railing)
+            cmds.parent(right_railing, RAILINGS_GROUP)
+        else:
+            # Curved railings
+            for i in range(step_count + 1):
+                angle = math.radians(angle_step * i)
+                x = math.cos(angle) * (curve_radius + step_width / 2)
+                z = math.sin(angle) * (curve_radius + step_width / 2)
+                y = step_height * i
+                cmds.polySphere(radius=0.05, name=f"Railing_Point_{i}")
+                cmds.move(x, y, z)
+
+        # Parent railings to stairs
+        cmds.parent(RAILINGS_GROUP, STAIRS_GROUP)
+
+    # Add material
+    material = cmds.shadingNode("lambert", asShader=True, name="Stair_Material")
+    cmds.setAttr(f"{material}.color", 0.5, 0.5, 0.5, type="double3")  # Gray color
+    cmds.select(STAIRS_GROUP)
+    cmds.hyperShade(assign=material)
+
+    cmds.select(clear=True)
+
+# Function to update the stairs dynamically
+def update_stairs(*args):
+    step_count = cmds.intSliderGrp("StepCountSlider", query=True, value=True)
+    step_height = cmds.floatSliderGrp("StepHeightSlider", query=True, value=True)
+    step_width = cmds.floatSliderGrp("StepWidthSlider", query=True, value=True)
+    step_depth = cmds.floatSliderGrp("StepDepthSlider", query=True, value=True)
+    step_thickness = cmds.floatSliderGrp("StepThicknessSlider", query=True, value=True)
+    curve_radius = cmds.floatSliderGrp("CurveRadiusSlider", query=True, value=True)
+    include_railings = cmds.checkBox("IncludeRailingsCheckbox", query=True, value=True)
+    is_curved = cmds.radioButtonGrp("StairTypeRadio", query=True, select=True) == 2
+    stair_direction = cmds.optionMenu("StairDirectionMenu", query=True, value=True)
+
+    create_modular_stairs(
+        step_count=step_count,
+        step_height=step_height,
+        step_width=step_width,
+        step_depth=step_depth,
+        step_thickness=step_thickness,
+        include_railings=include_railings,
+        curve_radius=curve_radius,
+        is_curved=is_curved,
+        stair_direction=stair_direction
+    )
+
+# GUI for Modular Stairs with sliders and stair direction options
+def stairs_generator_gui():
+    if cmds.window("stairsGeneratorUI", exists=True):
+        cmds.deleteUI("stairsGeneratorUI")
+
+    window = cmds.window("stairsGeneratorUI", title="Modular Stairs Generator", widthHeight=(350, 500))
+    cmds.columnLayout(adjustableColumn=True)
+
+    cmds.text(label="Modular Stairs Settings", align="center", height=30)
+    cmds.separator(height=10)
+
+    cmds.intSliderGrp("StepCountSlider", label="Step Count", field=True, minValue=1, maxValue=50, value=10, step=1, changeCommand=update_stairs)
+    cmds.floatSliderGrp("StepHeightSlider", label="Step Height", field=True, minValue=0.1, maxValue=2, value=0.3, step=0.05, changeCommand=update_stairs)
+    cmds.floatSliderGrp("StepWidthSlider", label="Step Width", field=True, minValue=0.5, maxValue=10, value=2, step=0.1, changeCommand=update_stairs)
+    cmds.floatSliderGrp("StepDepthSlider", label="Step Depth", field=True, minValue=0.1, maxValue=5, value=0.5, step=0.1, changeCommand=update_stairs)
+    cmds.floatSliderGrp("StepThicknessSlider", label="Step Thickness", field=True, minValue=0.01, maxValue=0.5, value=0.05, step=0.01, changeCommand=update_stairs)
+    cmds.floatSliderGrp("CurveRadiusSlider", label="Curve Radius", field=True, minValue=1, maxValue=50, value=5, step=0.5, changeCommand=update_stairs)
+    cmds.radioButtonGrp("StairTypeRadio", label="Stair Type", labelArray2=["Straight", "Curved"], numberOfRadioButtons=2, select=1, changeCommand=update_stairs)
+    cmds.optionMenu("StairDirectionMenu", label="Straight Stair Direction", changeCommand=update_stairs)
+    cmds.menuItem(label="Upward")
+    cmds.menuItem(label="Downward")
+    cmds.menuItem(label="Flat")
+    cmds.checkBox("IncludeRailingsCheckbox", label="Include Railings", value=True, changeCommand=update_stairs)
+
+    cmds.button(label="Generate Stairs", command=update_stairs)
+    cmds.showWindow(window)
+
+# Run the GUI
+stairs_generator_gui()
